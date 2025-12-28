@@ -56,6 +56,7 @@ int main(int argc, char *argv[]) {
 	// Add Null Terminator to Content (now we can treat it like a string)
 	content[bytes_read] = '\0';
 	printf("File Content of %s:\n%s\n", argv[1], content);
+	free(content);
 
 	// Directory Stream (need it to open actual directory)
 	DIR *dir;
@@ -73,6 +74,7 @@ int main(int argc, char *argv[]) {
 		return 4;
 	}
 
+	close(fd);
 	printf("-----List Files Within Current Directory-----:\n");
 
 	// List Entries Within Directory
