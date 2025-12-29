@@ -7,6 +7,18 @@
 #include <inttypes.h>
 #include <fcntl.h>
 
+// Function Prototypes
+int list_directory(const char *path);
+int file_type(int fd);
+
+// File Type Flags
+int REG_F = 0;
+int DIR_F = 0;
+int LNK_F = 0;
+
+// Argument Flags
+
+// Main Function
 int main(int argc, char *argv[]) {
 	// Error Check If No File Is Entered
 	if (argc < 2) {
@@ -35,6 +47,9 @@ int main(int argc, char *argv[]) {
 		close(fd);
 		return 3;
 	}
+	
+	// Get File Mode
+	printf("mode type: %ju\n", (uintmax_t)st.st_mode);
 
 	// Set Dynamic Size of File Content
 	char *content = malloc(st.st_size+1);
@@ -57,38 +72,36 @@ int main(int argc, char *argv[]) {
 	content[bytes_read] = '\0';
 	printf("File Content of %s:\n%s\n", argv[1], content);
 	free(content);
-
-	// Directory Stream (need it to open actual directory)
-	DIR *dir;
-
-	// Directory Entry (a file or subdirectory within the directory stream)
-	struct dirent *dir_entry;
-
-	// Open Directory Stream
-	const char *path = "."; // . = current directory in terminal
-	dir = opendir(path);
-
-	// Error Check If Directory Doesn't Exist
-	if (dir == NULL) {
-		perror("opendir");
-		return 4;
-	}
-
 	close(fd);
-	printf("-----List Files Within Current Directory-----:\n");
 
-	// List Entries Within Directory
-	while ((dir_entry = readdir(dir)) != NULL) {
-		// Access File Name since dir_entry has a member d_name
-		printf("Serial Number: %ju Entry Name: %s\n", (uintmax_t)dir_entry->d_ino, dir_entry->d_name);
-	}
-
-	// Close Directory Error Check
-	if (closedir(dir) == -1) {
-		perror("closedir");
-		return 5;
-	}
+	// List Directories
+	//const char *path = "."; // . = current directory in terminal
 	
 	// Finish
 	return 0;
+}
+
+// Determine if File is Regular, Symbolic Link, or Directory
+int file_type(int fd) {
+	// Exit Status 
+	int status = 0;
+
+	// Create Stat Struct
+	struct stat st; 
+
+	// Grab Metadata Information
+	if (fstat(fd, &st) == -1) {
+		perror("stat");
+		status = 1;
+	}
+
+	if (S_ISREG(st.st_mode)) {
+		REG_F = 1;
+	} else if (S_ISDIR(st.st_mode)) {
+		DIR_F = 1;
+	} else if (S_ISLNK(st.st_mode)) {
+		LNK_F = 1;
+	} else { status = 1; }
+	
+	return status;
 }
