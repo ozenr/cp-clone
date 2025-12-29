@@ -23,7 +23,7 @@ int LNK_F = 0;
 // Main Function
 int main(int argc, char *argv[]) {
 	// Error Check If No File Is Entered
-	if (argc < 2) {
+	if (argc < 3) {
 		fprintf(stderr, "Error: No file was entered.\n");
 		fprintf(stderr, "Usage: ./run <SOURCE-PATH> <DEST-PATH>\n");
 		
@@ -53,28 +53,6 @@ int main(int argc, char *argv[]) {
 		fprintf(stderr, "test");
 		return 1;
 	}
-/*
-	char *content = file_content(fd, st);
-	if (content == NULL) {
-		return 1;
-	}
-
-	printf("file-content: %s\n", content);
-	free(content); */
-
-	// Set File Type Flag
-	/*file_type(fd);
-
-	// Operations Based on File Type
-	if (REG_F) {
-		// Get File Metadata (mainly size)
-		if (fstat(fd, &st) == -1) {
-			perror("stat");
-			close(fd);
-			return 3;
-		}
-		copy(fd, st, argv[2]);	
-	}*/
 
 	// Finish
 	return 0;
@@ -118,8 +96,8 @@ char *file_content(int fd, struct stat st) {
 	// Read File Content Onto content buffer
 	ssize_t bytes_read = read(fd, content, st.st_size);
 	if (bytes_read == -1) {
-		perror("read");
 		free(content);
+		perror("read");
 		close(fd);
 		return NULL;
 	}
@@ -143,8 +121,9 @@ int copy_file(int fd, struct stat st, char *path) {
 	
 	// Make Copy of File
 	int fd2;
-	fd2 = open(path, O_RDWR | O_CREAT, st.st_mode);
+	fd2 = open(path, O_RDWR | O_CREAT | O_TRUNC, st.st_mode);
 	if (fd2 == -1) {
+		free(content);
 		fprintf(stderr, "Missing DEST File\n");
 		fprintf(stderr, "Usage: ./run <SOURCE-PATH> <DESTINATION-PATH>\n");
 		status = -1;
@@ -159,8 +138,6 @@ int copy_file(int fd, struct stat st, char *path) {
 		status = -1;
 		return status;
 	}
-
-	//st2.st_mode |= (ow_perms | gr_perms | ot_perms);
 
 	// Write Contents to File
 	ssize_t bytes_written = write(fd2, content, st.st_size);
