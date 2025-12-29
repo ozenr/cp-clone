@@ -8,8 +8,9 @@
 #include <fcntl.h>
 
 // Function Prototypes
-int list_directory(const char *path);
-int file_type(int fd);
+int set_flag(int fd);
+int copy(int fd, struct stat st, char *path);
+char *file_content(int fd, struct stat st);
 
 // File Type Flags
 int REG_F = 0;
@@ -27,12 +28,12 @@ int main(int argc, char *argv[]) {
 		
 		return 1;
 	}
-
+	
 	// File Descriptor and stat struct for File
 	int fd;
 	struct stat st;
 
-	// Open File
+	// Open Source File
 	fd = open(argv[1], O_RDONLY);
 
 	// Throw Error If File Does Not Exist
@@ -41,48 +42,46 @@ int main(int argc, char *argv[]) {
 		return 2;
 	}
 
-	// Get File Metadata (mainly size)
+	// Grab Metadata From File
 	if (fstat(fd, &st) == -1) {
-		perror("stat");
+		perror("fstat");
 		close(fd);
-		return 3;
+		return 1;
 	}
-	
-	// Get File Mode
-	printf("mode type: %ju\n", (uintmax_t)st.st_mode);
 
-	// Set Dynamic Size of File Content
-	char *content = malloc(st.st_size+1);
+	if (copy(fd, st, argv[2]) == -1) {
+		fprintf(stderr, "test");
+		return 1;
+	}
+/*
+	char *content = file_content(fd, st);
 	if (content == NULL) {
-		fprintf(stderr, "Memory allocation failed\n");
-		close(fd);
-		return 4;
+		return 1;
 	}
 
-	// Read File Content Onto content buffer
-	ssize_t bytes_read = read(fd, content, st.st_size);
-	if (bytes_read == -1) {
-		perror("read");
-		free(content);
-		close(fd);
-		return 5;
-	}
+	printf("file-content: %s\n", content);
+	free(content); */
 
-	// Add Null Terminator to Content (now we can treat it like a string)
-	content[bytes_read] = '\0';
-	printf("File Content of %s:\n%s\n", argv[1], content);
-	free(content);
-	close(fd);
+	// Set File Type Flag
+	/*file_type(fd);
 
-	// List Directories
-	//const char *path = "."; // . = current directory in terminal
-	
+	// Operations Based on File Type
+	if (REG_F) {
+		// Get File Metadata (mainly size)
+		if (fstat(fd, &st) == -1) {
+			perror("stat");
+			close(fd);
+			return 3;
+		}
+		copy(fd, st, argv[2]);	
+	}*/
+
 	// Finish
 	return 0;
 }
 
 // Determine if File is Regular, Symbolic Link, or Directory
-int file_type(int fd) {
+int set_flag(int fd) {
 	// Exit Status 
 	int status = 0;
 
@@ -92,7 +91,7 @@ int file_type(int fd) {
 	// Grab Metadata Information
 	if (fstat(fd, &st) == -1) {
 		perror("stat");
-		status = 1;
+		status = -1;
 	}
 
 	if (S_ISREG(st.st_mode)) {
@@ -101,7 +100,64 @@ int file_type(int fd) {
 		DIR_F = 1;
 	} else if (S_ISLNK(st.st_mode)) {
 		LNK_F = 1;
-	} else { status = 1; }
+	} else { status = -1; }
 	
+	return status;
+}
+
+// Get File Content
+char *file_content(int fd, struct stat st) {
+	// Set Dynamic Size of File Content
+	char *content = malloc(st.st_size+1);
+	if (content == NULL) {
+		perror("malloc");
+		close(fd);
+		return NULL;
+	}
+
+	// Read File Content Onto content buffer
+	ssize_t bytes_read = read(fd, content, st.st_size);
+	if (bytes_read == -1) {
+		perror("read");
+		free(content);
+		close(fd);
+		return NULL;
+	}
+
+	// Add Null Terminator to Content (now we can treat it like a string)
+	content[bytes_read] = '\0';
+	return content;
+}
+
+// Copy File Function
+// Assumes Given File Descriptor is for a Regular File
+int copy(int fd, struct stat st, char *path) {
+	// Exit Status Variable
+	int status = 0;
+	
+	// Get File Content of Source File
+	char *content = file_content(fd, st);
+	if (content == NULL) {
+		status = -1;
+	}
+	
+	// Make Copy of File
+	int fd2;
+	fd2 = open(path, O_RDWR | O_CREAT, S_IRWXU);
+	if (fd2 == -1) {
+		perror("open");
+		status = -1;
+	}
+
+	// Write Contents to File
+	ssize_t bytes_written = write(fd2, content, st.st_size);
+	if (bytes_written == -1) {
+		perror("write");
+		status = -1;
+	}
+	free(content);
+	close(fd);
+	close(fd2);
+
 	return status;
 }
