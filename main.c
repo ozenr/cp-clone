@@ -1,4 +1,6 @@
-#include <stdio.h>
+#define _POSIX_C_SOURCE 200809L
+
+#include <stdio.h> 
 #include <stdlib.h>
 #include <dirent.h>
 #include <unistd.h>
@@ -8,48 +10,123 @@
 #include <fcntl.h>
 
 // Function Prototypes
-int set_flag(int fd);
+int get_file_type(char *path);
 int copy_file(int fd, struct stat st, char *path);
-char *file_content(int fd, struct stat st);
-void print_permissions(struct stat st);
+char *get_file_content(int fd, struct stat st);
 
 // File Type Flags
-int REG_F = 0;
-int DIR_F = 0;
-int LNK_F = 0;
+int REG_F, DIR_F, LNK_F;
 
 // Argument Flags
+int i_FLAG, p_FLAG, r_FLAG, R_FLAG, b_FLAG, l_FLAG, s_FLAG, t_FLAG;
 
 // Main Function
 int main(int argc, char *argv[]) {
-	// Error Check If No File Is Entered
+	// Default Flags to 0
+	REG_F = DIR_F = LNK_F = 0;
+	i_FLAG = p_FLAG = r_FLAG = R_FLAG = b_FLAG = l_FLAG = s_FLAG = t_FLAG = 0;
+
+	// Parse Through Argument Flags (if Any)
+	int opt;
+	while ((opt = getopt(argc, argv, "iprRblst")) != -1) {
+		switch (opt) {
+			case 'i':
+				i_FLAG = 1;
+				break;
+
+			case 'p':
+				p_FLAG = 1;
+				break;
+
+			case 'r':
+				r_FLAG = 1;
+				break;
+
+			case 'R':
+				R_FLAG = 1;
+				break;
+
+			case 'b':
+				b_FLAG = 1;
+				break;
+
+			case 'l':
+				l_FLAG = 1;
+				break;
+
+			case 's':
+				s_FLAG = 1;
+				break;
+
+			case 't':
+				t_FLAG = 1;
+				break;
+			case '?':
+				fprintf(stderr, "Unknown Flag '-%c'\n", optopt);
+				break;
+			default:
+				fprintf(stderr, "Usage: ./run [FLAGS] <SOURCE-PATH> <DEST-PATH>\n");
+				return 1;
+		}
+	}
+
+	/* // Error Check If No File Is Entered 
 	if (argc < 3) {
 		fprintf(stderr, "Error: No file was entered.\n");
 		fprintf(stderr, "Usage: ./run <SOURCE-PATH> <DEST-PATH>\n");
 		
 		return 1;
-	}
+	} */
 	
 	// File Descriptor and stat struct for File
-	int fd;
+	int SOURCE_FD;
 	struct stat st;
 
 	// Open Source File
-	fd = open(argv[1], O_RDONLY);
+	SOURCE_FD = open(argv[1], O_RDONLY);
 
 	// Throw Error If File Does Not Exist
-	if (fd == -1) {
+	if (SOURCE_FD == -1) {
 		perror("open");
 		return 2;
 	}
 
 	// Grab Metadata From File
-	if (fstat(fd, &st) == -1) {
+	if (fstat(SOURCE_FD, &st) == -1) {
 		perror("fstat");
-		close(fd);
+		close(SOURCE_FD);
 		return 1;
 	}
-	if (copy_file(fd, st, argv[2]) == -1) {
+	
+	// Determine File Type
+	if (get_file_type(argv[1]) == -1) {
+		fprintf(stderr, "Invalid File Type. Enter either a regular file, directory, or a symbolic link.\n");
+		close(SOURCE_FD);
+		return 1;
+	}
+
+	// Operations Based On File Type
+	// Regular File
+	if (REG_F) {
+		// Copy File
+		if (copy_file(SOURCE_FD, st, argv[2]) == -1) {
+			fprintf(stderr, "test");
+			return 1;
+		}
+	}
+	
+	// Directory 
+	else if (DIR_F) {
+		printf("Directory\n");
+	} 
+	
+	// Linked File
+	else if (LNK_F) {
+		printf("Symbolic Link\n");
+	}
+
+	// Copy File
+	if (copy_file(SOURCE_FD, st, argv[2]) == -1) {
 		fprintf(stderr, "test");
 		return 1;
 	}
@@ -58,7 +135,7 @@ int main(int argc, char *argv[]) {
 	return 0;
 }
 
-int set_flag(int fd) {
+int get_file_type(char *path) {
 	// Exit Status 
 	int status = 0;
 
@@ -66,7 +143,7 @@ int set_flag(int fd) {
 	struct stat st; 
 
 	// Grab Metadata Information
-	if (fstat(fd, &st) == -1) {
+	if (lstat(path, &st) == -1) {
 		perror("stat");
 		status = -1;
 	}
@@ -84,7 +161,7 @@ int set_flag(int fd) {
 }
 
 // Get File Content
-char *file_content(int fd, struct stat st) {
+char *get_file_content(int fd, struct stat st) {
 	// Set Dynamic Size of File Content
 	char *content = malloc(st.st_size+1);
 	if (content == NULL) {
@@ -113,7 +190,7 @@ int copy_file(int fd, struct stat st, char *path) {
 	int status = 0;
 	
 	// Get File Content of Source File
-	char *content = file_content(fd, st);
+	char *content = get_file_content(fd, st);
 	if (content == NULL) {
 		status = -1;
 		return status;
