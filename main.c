@@ -9,8 +9,9 @@
 
 // Function Prototypes
 int set_flag(int fd);
-int copy(int fd, struct stat st, char *path);
+int copy_file(int fd, struct stat st, char *path);
 char *file_content(int fd, struct stat st);
+void print_permissions(struct stat st);
 
 // File Type Flags
 int REG_F = 0;
@@ -24,7 +25,7 @@ int main(int argc, char *argv[]) {
 	// Error Check If No File Is Entered
 	if (argc < 2) {
 		fprintf(stderr, "Error: No file was entered.\n");
-		fprintf(stderr, "Usage: %s <filename>\n", argv[0]);
+		fprintf(stderr, "Usage: ./run <SOURCE-PATH> <DEST-PATH>\n");
 		
 		return 1;
 	}
@@ -48,8 +49,7 @@ int main(int argc, char *argv[]) {
 		close(fd);
 		return 1;
 	}
-
-	if (copy(fd, st, argv[2]) == -1) {
+	if (copy_file(fd, st, argv[2]) == -1) {
 		fprintf(stderr, "test");
 		return 1;
 	}
@@ -80,7 +80,6 @@ int main(int argc, char *argv[]) {
 	return 0;
 }
 
-// Determine if File is Regular, Symbolic Link, or Directory
 int set_flag(int fd) {
 	// Exit Status 
 	int status = 0;
@@ -93,7 +92,8 @@ int set_flag(int fd) {
 		perror("stat");
 		status = -1;
 	}
-
+	
+	// Set Flags Based on Filetype
 	if (S_ISREG(st.st_mode)) {
 		REG_F = 1;
 	} else if (S_ISDIR(st.st_mode)) {
@@ -129,9 +129,8 @@ char *file_content(int fd, struct stat st) {
 	return content;
 }
 
-// Copy File Function
-// Assumes Given File Descriptor is for a Regular File
-int copy(int fd, struct stat st, char *path) {
+// Copy File Function - Assumes Given File Descriptor is for a Regular File
+int copy_file(int fd, struct stat st, char *path) {
 	// Exit Status Variable
 	int status = 0;
 	
@@ -139,15 +138,29 @@ int copy(int fd, struct stat st, char *path) {
 	char *content = file_content(fd, st);
 	if (content == NULL) {
 		status = -1;
+		return status;
 	}
 	
 	// Make Copy of File
 	int fd2;
-	fd2 = open(path, O_RDWR | O_CREAT, S_IRWXU);
+	fd2 = open(path, O_RDWR | O_CREAT, st.st_mode);
 	if (fd2 == -1) {
-		perror("open");
+		fprintf(stderr, "Missing DEST File\n");
+		fprintf(stderr, "Usage: ./run <SOURCE-PATH> <DESTINATION-PATH>\n");
 		status = -1;
+		return status;
 	}
+
+	// Copy Permissions Of File 
+	struct stat st2; 
+	if (fstat(fd2, &st2) == -1) {
+		perror("fstat");
+		close(fd2);
+		status = -1;
+		return status;
+	}
+
+	//st2.st_mode |= (ow_perms | gr_perms | ot_perms);
 
 	// Write Contents to File
 	ssize_t bytes_written = write(fd2, content, st.st_size);
@@ -155,6 +168,7 @@ int copy(int fd, struct stat st, char *path) {
 		perror("write");
 		status = -1;
 	}
+	// Free Memory & Close Files
 	free(content);
 	close(fd);
 	close(fd2);
