@@ -18,58 +18,68 @@ char *get_file_content(int fd, struct stat st);
 int REG_F, DIR_F, LNK_F;
 
 // Argument Flags
-int i_FLAG, p_FLAG, r_FLAG, R_FLAG, b_FLAG, l_FLAG, s_FLAG, t_FLAG;
+enum ARG_FLAGS {
+	 i_FLAG = 1 << 0,
+	 p_FLAG = 1 << 1,
+	 r_FLAG = 1 << 2,
+	 b_FLAG = 1 << 3,
+	 l_FLAG = 1 << 4,
+	 s_FLAG = 1 << 5,
+	 t_FLAG = 1 << 6
+};
 
 // Main Function
 int main(int argc, char *argv[]) {
-	// Default Flags to 0
+	// Default File Type Flags to 0
 	REG_F = DIR_F = LNK_F = 0;
-	i_FLAG = p_FLAG = r_FLAG = R_FLAG = b_FLAG = l_FLAG = s_FLAG = t_FLAG = 0;
+
+	// Store Argument Flags
+	int args = 0;
 
 	// Parse Through Argument Flags (if Any)
 	int opt;
 	while ((opt = getopt(argc, argv, "iprRblst")) != -1) {
 		switch (opt) {
 			case 'i':
-				i_FLAG = 1;
+				args |= i_FLAG;
 				break;
 
 			case 'p':
-				p_FLAG = 1;
+				args |= p_FLAG;
 				break;
 
 			case 'r':
-				r_FLAG = 1;
+				args |= r_FLAG;
 				break;
 
 			case 'R':
-				R_FLAG = 1;
+				args |= r_FLAG;
 				break;
 
 			case 'b':
-				b_FLAG = 1;
+				args |= b_FLAG;
 				break;
 
 			case 'l':
-				l_FLAG = 1;
+				args |= l_FLAG;
 				break;
 
 			case 's':
-				s_FLAG = 1;
+				args |= s_FLAG;
 				break;
 
 			case 't':
-				t_FLAG = 1;
-				break;
-			case '?':
-				fprintf(stderr, "Unknown Flag '-%c'\n", optopt);
+				args |= t_FLAG;
 				break;
 			default:
-				fprintf(stderr, "Usage: ./run [FLAGS] <SOURCE-PATH> <DEST-PATH>\n");
-				return 1;
+				fprintf(stderr, "The available argument flags are: -i -p -r -R -b -l -s -t\n");
+				return 1; 
 		}
 	}
-
+	
+	printf("source: %s dest: %s\n", argv[optind], argv[optind+1]);	
+	printf("Flags (integer form): %d\n", args); 
+	// Print Every Arg After The Flags
 	/* // Error Check If No File Is Entered 
 	if (argc < 3) {
 		fprintf(stderr, "Error: No file was entered.\n");
@@ -83,7 +93,7 @@ int main(int argc, char *argv[]) {
 	struct stat st;
 
 	// Open Source File
-	SOURCE_FD = open(argv[1], O_RDONLY);
+	SOURCE_FD = open(argv[optind], O_RDONLY);
 
 	// Throw Error If File Does Not Exist
 	if (SOURCE_FD == -1) {
@@ -99,7 +109,7 @@ int main(int argc, char *argv[]) {
 	}
 	
 	// Determine File Type
-	if (get_file_type(argv[1]) == -1) {
+	if (get_file_type(argv[optind]) == -1) {
 		fprintf(stderr, "Invalid File Type. Enter either a regular file, directory, or a symbolic link.\n");
 		close(SOURCE_FD);
 		return 1;
@@ -109,7 +119,7 @@ int main(int argc, char *argv[]) {
 	// Regular File
 	if (REG_F) {
 		// Copy File
-		if (copy_file(SOURCE_FD, st, argv[2]) == -1) {
+		if (copy_file(SOURCE_FD, st, argv[optind+1]) == -1) {
 			fprintf(stderr, "test");
 			return 1;
 		}
@@ -123,12 +133,6 @@ int main(int argc, char *argv[]) {
 	// Linked File
 	else if (LNK_F) {
 		printf("Symbolic Link\n");
-	}
-
-	// Copy File
-	if (copy_file(SOURCE_FD, st, argv[2]) == -1) {
-		fprintf(stderr, "test");
-		return 1;
 	}
 
 	// Finish
