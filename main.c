@@ -8,10 +8,12 @@
 #include <sys/types.h>
 #include <inttypes.h>
 #include <fcntl.h>
+#include <string.h>
+#include <time.h>
 
 // Function Prototypes
 int get_file_type(char *path);
-int copy_file(int fd, struct stat st, char *path);
+int copy_file(int fd, struct stat source_st, char *path, int args);
 char *get_file_content(int fd, struct stat st);
 
 // File Type Flags
@@ -77,17 +79,6 @@ int main(int argc, char *argv[]) {
 		}
 	}
 	
-	printf("source: %s dest: %s\n", argv[optind], argv[optind+1]);	
-	printf("Flags (integer form): %d\n", args); 
-	// Print Every Arg After The Flags
-	/* // Error Check If No File Is Entered 
-	if (argc < 3) {
-		fprintf(stderr, "Error: No file was entered.\n");
-		fprintf(stderr, "Usage: ./run <SOURCE-PATH> <DEST-PATH>\n");
-		
-		return 1;
-	} */
-	
 	// File Descriptor and stat struct for File
 	int SOURCE_FD;
 	struct stat st;
@@ -98,7 +89,7 @@ int main(int argc, char *argv[]) {
 	// Throw Error If File Does Not Exist
 	if (SOURCE_FD == -1) {
 		perror("open");
-		return 2;
+		return 1;
 	}
 
 	// Grab Metadata From File
@@ -119,7 +110,7 @@ int main(int argc, char *argv[]) {
 	// Regular File
 	if (REG_F) {
 		// Copy File
-		if (copy_file(SOURCE_FD, st, argv[optind+1]) == -1) {
+		if (copy_file(SOURCE_FD, st, argv[optind+1], args) == -1) {
 			fprintf(stderr, "test");
 			return 1;
 		}
@@ -189,20 +180,83 @@ char *get_file_content(int fd, struct stat st) {
 }
 
 // Copy File Function - Assumes Given File Descriptor is for a Regular File
-int copy_file(int fd, struct stat st, char *path) {
+int copy_file(int fd, struct stat source_st, char *path, int args) {
 	// Exit Status Variable
 	int status = 0;
+
+	int fd2;
+	struct stat st;
 	
 	// Get File Content of Source File
-	char *content = get_file_content(fd, st);
+	char *content = get_file_content(fd, source_st);
 	if (content == NULL) {
 		status = -1;
 		return status;
 	}
 	
+	// Check for Entered Flags
+	// p_FLAG
+	if ((args & p_FLAG) == p_FLAG) {
+		// Create Copy of File - Retains Source File Mode
+		fd2 = open(path, O_RDWR | O_CREAT | O_TRUNC, source_st.st_mode);
+
+		// Error Check
+		if (fd2 == -1) {
+			free(content);
+			fprintf(stderr, "Missing DEST File\n");
+			fprintf(stderr, "Usage: ./run <SOURCE-PATH> <DESTINATION-PATH>\n");
+			status = -1;
+			return status;
+		}
+
+		if (fstat(fd2, &st) == -1) {
+			perror("fstat");
+			close(fd2);
+			status = -1;
+			return status;
+		}
+
+		// Copy Source Content to File
+		ssize_t bytes_written = write(fd2, content, source_st.st_size);
+		if (bytes_written == -1) {
+			perror("write");
+			status = -1;
+		}
+
+		// Free Memory & Close Files
+		free(content);
+
+		// Copy Ownerships
+		uid_t uid = source_st.st_uid;
+		gid_t gid = source_st.st_gid;
+		if (chown(path, uid, gid) == -1) {
+			perror("chown");
+			status = -1;
+			return status;
+		}
+
+		// Copy Timestamps
+		struct timespec new_times[2];
+		new_times[0].tv_sec = source_st.st_atim.tv_sec; 
+		new_times[0].tv_nsec = source_st.st_atim.tv_nsec;
+		new_times[1].tv_sec = source_st.st_mtim.tv_sec;
+		new_times[1].tv_nsec = source_st.st_mtim.tv_nsec; 
+		
+		if (futimens(fd2, new_times) == -1) {
+			perror("futimens");
+			close(fd);
+			close(fd2);
+			status = -1;
+			return status;
+		}
+		// Close Files
+		close(fd);
+		close(fd2);
+		return status;
+	}
+
 	// Make Copy of File
-	int fd2;
-	fd2 = open(path, O_RDWR | O_CREAT | O_TRUNC, st.st_mode);
+	fd2 = open(path, O_RDWR | O_CREAT | O_TRUNC, source_st.st_mode);
 	if (fd2 == -1) {
 		free(content);
 		fprintf(stderr, "Missing DEST File\n");
@@ -212,8 +266,7 @@ int copy_file(int fd, struct stat st, char *path) {
 	}
 
 	// Copy Permissions Of File 
-	struct stat st2; 
-	if (fstat(fd2, &st2) == -1) {
+	if (fstat(fd2, &st) == -1) {
 		perror("fstat");
 		close(fd2);
 		status = -1;
@@ -221,7 +274,7 @@ int copy_file(int fd, struct stat st, char *path) {
 	}
 
 	// Write Contents to File
-	ssize_t bytes_written = write(fd2, content, st.st_size);
+	ssize_t bytes_written = write(fd2, content, source_st.st_size);
 	if (bytes_written == -1) {
 		perror("write");
 		status = -1;
