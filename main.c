@@ -13,7 +13,7 @@
 
 // Function Prototypes
 int get_file_type(char *path);
-int acopy_file(int fd, struct stat source_st, char *path, int args);
+int acopy_file(int fd, struct stat source_st, char *source_path, char *dest_path, int args);
 int copy_file(int fd, struct stat source_st, char *path);
 char *get_file_content(int fd, struct stat st);
 
@@ -107,11 +107,11 @@ int main(int argc, char *argv[]) {
 		return 1;
 	}
 
-	// Operations Based On File Type
+	// Operations Based On Source File Type
 	// Regular File
 	if (REG_F) {
 		// Copy File
-		if (acopy_file(SOURCE_FD, st, argv[optind+1], args) == -1) {
+		if (acopy_file(SOURCE_FD, st, argv[optind], argv[optind+1], args) == -1) {
 			fprintf(stderr, "testing errorr message\n");
 			return 1;
 		}
@@ -221,6 +221,7 @@ int copy_file(int fd, struct stat source_st, char *path) {
 		status = -1;
 		return status;
 	}
+
 	// Free Memory & Close Files
 	free(content);
 	close(fd2);
@@ -229,31 +230,41 @@ int copy_file(int fd, struct stat source_st, char *path) {
 }
 
 // File Function That Applies Argument Flags 
-int acopy_file(int fd, struct stat source_st, char *path, int args) {
+int acopy_file(int fd, struct stat source_st, char *source_path, char *dest_path, int args) {
 	// Exit Status Variable
 	int status = 0;
-
+	
+	// File Descriptor for Copied File
 	int fd2;
-	struct stat st;
 
-	// Create Copy of File 
-	if (copy_file(fd, source_st, path) == -1) {
-		fprintf(stderr, "testing error message\n");
-		status = -1;
-		return status;
+// ---------- Check for Entered Flags -----------
+	// l_FLAG
+	if ((args & l_FLAG) == l_FLAG) {
+		// Create a Hard Link to Source
+		if (link(source_path, dest_path) == -1) {
+			perror("link error"); 
+			status = -1;
+			return status;
+		}
 	}
 
-	// Re-open Copied File 
-	fd2 = open(path, O_RDWR | O_CREAT, source_st.st_mode);
-
-	// Check for Entered Flags
 	// p_FLAG
 	if ((args & p_FLAG) == p_FLAG) {
+		// Create Copy of File 
+		if (copy_file(fd, source_st, dest_path) == -1) {
+			fprintf(stderr, "testing error message\n");
+			status = -1;
+			return status;
+		}
+
+		// Re-open Copied File 
+		fd2 = open(dest_path, O_RDWR | O_CREAT, source_st.st_mode);
+
 		// Copy Ownerships
 		uid_t uid = source_st.st_uid;
 		gid_t gid = source_st.st_gid;
 
-		if (chown(path, uid, gid) == -1) {
+		if (chown(dest_path, uid, gid) == -1) {
 			perror("chown");
 			status = -1;
 			return status;
@@ -270,27 +281,11 @@ int acopy_file(int fd, struct stat source_st, char *path, int args) {
 			perror("futimens");
 			close(fd2);
 			status = -1;
-		}
-
-		// Close Copied File
-		close(fd2);
-	}
-
-	/*// l_flag
-	if ((args & l_FLAG) == l_FLAG) {
-		// Create a Hard Link to Source
-		if (link(, path) == -1) {
-			perror("link"); */
-
-	/*	
-	// Create File as Default Command If No Flags
-	else { 
-		if (copy_file(fd, source_st, path) == -1) {
-			fprintf(stderr, "testing error message\n");
-			status = -1;
 			return status;
 		}
-	} */
+	}
 
+	// Close Copied File
+	close(fd2);
 	return status;
 }
