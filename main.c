@@ -13,7 +13,8 @@
 
 // Function Prototypes
 int get_file_type(char *path);
-int copy_file(int fd, struct stat source_st, char *path, int args);
+int acopy_file(int fd, struct stat source_st, char *path, int args);
+int copy_file(int fd, struct stat source_st, char *path);
 char *get_file_content(int fd, struct stat st);
 
 // File Type Flags
@@ -110,8 +111,8 @@ int main(int argc, char *argv[]) {
 	// Regular File
 	if (REG_F) {
 		// Copy File
-		if (copy_file(SOURCE_FD, st, argv[optind+1], args) == -1) {
-			fprintf(stderr, "test");
+		if (acopy_file(SOURCE_FD, st, argv[optind+1], args) == -1) {
+			fprintf(stderr, "testing errorr message\n");
 			return 1;
 		}
 	}
@@ -127,6 +128,7 @@ int main(int argc, char *argv[]) {
 	}
 
 	// Finish
+	close(SOURCE_FD);
 	return 0;
 }
 
@@ -180,13 +182,13 @@ char *get_file_content(int fd, struct stat st) {
 }
 
 // Copy File Function - Assumes Given File Descriptor is for a Regular File
-int copy_file(int fd, struct stat source_st, char *path, int args) {
+int copy_file(int fd, struct stat source_st, char *path) {
 	// Exit Status Variable
 	int status = 0;
 
 	int fd2;
 	struct stat st;
-	
+
 	// Get File Content of Source File
 	char *content = get_file_content(fd, source_st);
 	if (content == NULL) {
@@ -194,67 +196,6 @@ int copy_file(int fd, struct stat source_st, char *path, int args) {
 		return status;
 	}
 	
-	// Check for Entered Flags
-	// p_FLAG
-	if ((args & p_FLAG) == p_FLAG) {
-		// Create Copy of File - Retains Source File Mode
-		fd2 = open(path, O_RDWR | O_CREAT | O_TRUNC, source_st.st_mode);
-
-		// Error Check
-		if (fd2 == -1) {
-			free(content);
-			fprintf(stderr, "Missing DEST File\n");
-			fprintf(stderr, "Usage: ./run <SOURCE-PATH> <DESTINATION-PATH>\n");
-			status = -1;
-			return status;
-		}
-
-		if (fstat(fd2, &st) == -1) {
-			perror("fstat");
-			close(fd2);
-			status = -1;
-			return status;
-		}
-
-		// Copy Source Content to File
-		ssize_t bytes_written = write(fd2, content, source_st.st_size);
-		if (bytes_written == -1) {
-			perror("write");
-			status = -1;
-		}
-
-		// Free Memory & Close Files
-		free(content);
-
-		// Copy Ownerships
-		uid_t uid = source_st.st_uid;
-		gid_t gid = source_st.st_gid;
-		if (chown(path, uid, gid) == -1) {
-			perror("chown");
-			status = -1;
-			return status;
-		}
-
-		// Copy Timestamps
-		struct timespec new_times[2];
-		new_times[0].tv_sec = source_st.st_atim.tv_sec; 
-		new_times[0].tv_nsec = source_st.st_atim.tv_nsec;
-		new_times[1].tv_sec = source_st.st_mtim.tv_sec;
-		new_times[1].tv_nsec = source_st.st_mtim.tv_nsec; 
-		
-		if (futimens(fd2, new_times) == -1) {
-			perror("futimens");
-			close(fd);
-			close(fd2);
-			status = -1;
-			return status;
-		}
-		// Close Files
-		close(fd);
-		close(fd2);
-		return status;
-	}
-
 	// Make Copy of File
 	fd2 = open(path, O_RDWR | O_CREAT | O_TRUNC, source_st.st_mode);
 	if (fd2 == -1) {
@@ -278,11 +219,78 @@ int copy_file(int fd, struct stat source_st, char *path, int args) {
 	if (bytes_written == -1) {
 		perror("write");
 		status = -1;
+		return status;
 	}
 	// Free Memory & Close Files
 	free(content);
-	close(fd);
 	close(fd2);
+	
+	return status;
+}
+
+// File Function That Applies Argument Flags 
+int acopy_file(int fd, struct stat source_st, char *path, int args) {
+	// Exit Status Variable
+	int status = 0;
+
+	int fd2;
+	struct stat st;
+
+	// Create Copy of File 
+	if (copy_file(fd, source_st, path) == -1) {
+		fprintf(stderr, "testing error message\n");
+		status = -1;
+		return status;
+	}
+
+	// Re-open Copied File 
+	fd2 = open(path, O_RDWR | O_CREAT, source_st.st_mode);
+
+	// Check for Entered Flags
+	// p_FLAG
+	if ((args & p_FLAG) == p_FLAG) {
+		// Copy Ownerships
+		uid_t uid = source_st.st_uid;
+		gid_t gid = source_st.st_gid;
+
+		if (chown(path, uid, gid) == -1) {
+			perror("chown");
+			status = -1;
+			return status;
+		}
+
+		// Copy Timestamps
+		struct timespec new_times[2];
+		new_times[0].tv_sec = source_st.st_atim.tv_sec; 
+		new_times[0].tv_nsec = source_st.st_atim.tv_nsec;
+		new_times[1].tv_sec = source_st.st_mtim.tv_sec;
+		new_times[1].tv_nsec = source_st.st_mtim.tv_nsec; 
+
+		if (futimens(fd2, new_times) == -1) {
+			perror("futimens");
+			close(fd2);
+			status = -1;
+		}
+
+		// Close Copied File
+		close(fd2);
+	}
+
+	/*// l_flag
+	if ((args & l_FLAG) == l_FLAG) {
+		// Create a Hard Link to Source
+		if (link(, path) == -1) {
+			perror("link"); */
+
+	/*	
+	// Create File as Default Command If No Flags
+	else { 
+		if (copy_file(fd, source_st, path) == -1) {
+			fprintf(stderr, "testing error message\n");
+			status = -1;
+			return status;
+		}
+	} */
 
 	return status;
 }
