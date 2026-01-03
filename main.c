@@ -10,12 +10,14 @@
 #include <fcntl.h>
 #include <string.h>
 #include <time.h>
+#include <string.h>
 
 // Function Prototypes
 int get_file_type(char *path);
 int acopy_file(int fd, struct stat source_st, char *source_path, char *dest_path, int args);
 int copy_file(int fd, struct stat source_st, char *path);
 char *get_file_content(int fd, struct stat st);
+int copy_directory(const char *path, int args);
 
 // File Type Flags
 int REG_F, DIR_F, LNK_F;
@@ -79,7 +81,7 @@ int main(int argc, char *argv[]) {
 				return 1; 
 		}
 	}
-	
+
 	// File Descriptor and stat struct for File
 	int SOURCE_FD;
 	struct stat st;
@@ -110,7 +112,15 @@ int main(int argc, char *argv[]) {
 	// Operations Based On Source File Type
 	// Regular File
 	if (REG_F) {
-		// Copy File
+		// Copy File Without Arguments
+		if (args == 0) {
+			if (copy_file(SOURCE_FD, st, argv[optind+1]) == -1) {
+				fprintf(stderr, "testing error message\n");
+				return 1;
+			}
+		}
+
+		// Copy File With Arguments
 		if (acopy_file(SOURCE_FD, st, argv[optind], argv[optind+1], args) == -1) {
 			fprintf(stderr, "testing errorr message\n");
 			return 1;
@@ -237,55 +247,103 @@ int acopy_file(int fd, struct stat source_st, char *source_path, char *dest_path
 	// File Descriptor for Copied File
 	int fd2;
 
-// ---------- Check for Entered Flags -----------
-	// l_FLAG
-	if ((args & l_FLAG) == l_FLAG) {
-		// Create a Hard Link to Source
-		if (link(source_path, dest_path) == -1) {
-			perror("link error"); 
-			status = -1;
-			return status;
-		}
-	}
-
-	// p_FLAG
-	if ((args & p_FLAG) == p_FLAG) {
-		// Create Copy of File 
+	// Create File If No Flags
+	if (args == 0) { 
 		if (copy_file(fd, source_st, dest_path) == -1) {
 			fprintf(stderr, "testing error message\n");
 			status = -1;
 			return status;
 		}
+	}
 
-		// Re-open Copied File 
-		fd2 = open(dest_path, O_RDWR | O_CREAT, source_st.st_mode);
-
-		// Copy Ownerships
-		uid_t uid = source_st.st_uid;
-		gid_t gid = source_st.st_gid;
-
-		if (chown(dest_path, uid, gid) == -1) {
-			perror("chown");
-			status = -1;
-			return status;
+	// ---------- Check for Entered Flags -----------
+	else {
+		// l_FLAG
+		if ((args & l_FLAG) == l_FLAG) {
+			// Create a Hard Link to Source
+			if (link(source_path, dest_path) == -1) {
+				perror("link error"); 
+				status = -1;
+				return status;
+			}
 		}
 
-		// Copy Timestamps
-		struct timespec new_times[2];
-		new_times[0].tv_sec = source_st.st_atim.tv_sec; 
-		new_times[0].tv_nsec = source_st.st_atim.tv_nsec;
-		new_times[1].tv_sec = source_st.st_mtim.tv_sec;
-		new_times[1].tv_nsec = source_st.st_mtim.tv_nsec; 
+		// p_FLAG
+		if ((args & p_FLAG) == p_FLAG) {
+			// Create Copy of File 
+			if (copy_file(fd, source_st, dest_path) == -1) {
+				fprintf(stderr, "testing error message\n");
+				status = -1;
+				return status;
+			}
 
-		if (futimens(fd2, new_times) == -1) {
-			perror("futimens");
-			close(fd2);
-			status = -1;
-			return status;
+			// Re-open Copied File 
+			fd2 = open(dest_path, O_RDWR | O_CREAT, source_st.st_mode);
+
+			// Copy Ownerships
+			uid_t uid = source_st.st_uid;
+			gid_t gid = source_st.st_gid;
+
+			if (chown(dest_path, uid, gid) == -1) {
+				perror("chown");
+				status = -1;
+				return status;
+			}
+
+			// Copy Timestamps
+			struct timespec new_times[2];
+			new_times[0].tv_sec = source_st.st_atim.tv_sec; 
+			new_times[0].tv_nsec = source_st.st_atim.tv_nsec;
+			new_times[1].tv_sec = source_st.st_mtim.tv_sec;
+			new_times[1].tv_nsec = source_st.st_mtim.tv_nsec; 
+
+			// Function that Copies Timestamps
+			if (futimens(fd2, new_times) == -1) {
+				perror("futimens");
+				close(fd2);
+				status = -1;
+				return status;
+			}
 		}
 	}
 
 	// Close Copied File
 	close(fd2);
+	return status;
+}
+
+// Function to Copy Directories
+int copy_directory(const char *path, int args) {
+	// Status Variable
+	int status = 0;
+
+	// Initialize Directory
+	DIR *dp;
+	struct dirent *entry;
+	struct stat st;
+
+	// Base Case When Opening Directory
+	if ((dp = opendir(path)) == NULL) {
+		perror("opendir");
+		return -1;
+	}
+
+	// Iterate Through Directory Entries
+	while ((entry = readdir(dp)) != NULL) {
+		// Skip Current and Parent Directory 
+		if (strcmp(entry->d_name, ".") == 0 || strcmp(entry->d_name, "..") == 0) {
+			continue
+		}
+		
+		// Store Entry Data in Stat Struct
+		if (stat(entry->d_name, &st) == -1) {
+			status = -1;
+			break;
+		}
+
+		// Check If Entry is a Directory
+
+	}
+
 	return status;
 }
