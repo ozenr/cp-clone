@@ -103,7 +103,8 @@ int main(int argc, char *argv[]) {
 	}
 	
 	// Determine File Type
-	if (get_file_type(argv[optind]) == -1) {
+	int file_type;
+	if ((file_type = get_file_type(argv[optind])) == -1) {
 		fprintf(stderr, "Invalid File Type. Enter either a regular file, directory, or a symbolic link.\n");
 		close(SOURCE_FD);
 		return 1;
@@ -111,7 +112,7 @@ int main(int argc, char *argv[]) {
 
 	// Operations Based On Source File Type
 	// Regular File
-	if (REG_F) {
+	if (file_type == S_IFREG) {
 		// Copy File Without Arguments
 		if (args == 0) {
 			if (copy_file(SOURCE_FD, st, argv[optind+1]) == -1) {
@@ -128,12 +129,12 @@ int main(int argc, char *argv[]) {
 	}
 	
 	// Directory 
-	else if (DIR_F) {
+	else if (file_type == S_IFDIR) {
 		printf("Directory\n");
 	} 
 	
 	// Linked File
-	else if (LNK_F) {
+	else if (file_type == S_IFLNK) {
 		printf("Symbolic Link\n");
 	}
 
@@ -149,7 +150,7 @@ int get_file_type(char *path) {
 	// Create Stat Struct
 	struct stat st; 
 
-	// Grab Metadata Information
+	// Grab Metadata 
 	if (lstat(path, &st) == -1) {
 		perror("stat");
 		status = -1;
@@ -157,11 +158,11 @@ int get_file_type(char *path) {
 	
 	// Set Flags Based on Filetype
 	if (S_ISREG(st.st_mode)) {
-		REG_F = 1;
+		return S_IFREG;
 	} else if (S_ISDIR(st.st_mode)) {
-		DIR_F = 1;
+		return S_IFDIR;
 	} else if (S_ISLNK(st.st_mode)) {
-		LNK_F = 1;
+		return S_IFLNK;
 	} else { status = -1; }
 	
 	return status;
@@ -332,7 +333,7 @@ int copy_directory(const char *path, int args) {
 	while ((entry = readdir(dp)) != NULL) {
 		// Skip Current and Parent Directory 
 		if (strcmp(entry->d_name, ".") == 0 || strcmp(entry->d_name, "..") == 0) {
-			continue
+			continue;
 		}
 		
 		// Store Entry Data in Stat Struct
@@ -342,7 +343,7 @@ int copy_directory(const char *path, int args) {
 		}
 
 		// Check If Entry is a Directory
-
+		
 	}
 
 	return status;
