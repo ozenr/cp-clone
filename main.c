@@ -1,5 +1,5 @@
 #define _POSIX_C_SOURCE 200809L
-#define MAX_PATH 4096
+#define PATH_MAX 4096
 
 #include <stdio.h> 
 #include <stdlib.h>
@@ -18,7 +18,7 @@ int get_file_type(char *path);
 int acopy_file(int fd, struct stat source_st, char *source_path, char *dest_path, int args);
 int copy_file(int fd, struct stat source_st, char *path);
 char *get_file_content(int fd, struct stat st);
-int copy_directory(char *source_path, char *dest_path, int args)
+int copy_directory(char *source_path, char *dest_path, int args);
 
 // File Type Flags
 int REG_F, DIR_F, LNK_F;
@@ -131,7 +131,16 @@ int main(int argc, char *argv[]) {
 	
 	// Directory 
 	else if (file_type == S_IFDIR) {
-		printf("Directory\n");
+		// Copy Directory Only if -r or -R flag is activated
+		if ((args & r_FLAG) == r_FLAG) {
+			if (copy_directory(argv[optind], argv[optind+1], args) == -1) {
+				fprintf(stderr, "copy_directory error\n");
+				return 1;
+			}
+		} else {
+			fprintf(stderr, "no -r or -R flag was entered\n");
+			return 1;
+		}
 	} 
 	
 	// Linked File
@@ -323,11 +332,25 @@ int copy_directory(char *source_path, char *dest_path, int args) {
 	// Initialize Directory
 	DIR *dp;
 	struct dirent *entry;
-	struct stat st;
+	struct stat dir_st;
 
-	// Base Case When Opening Directory
+	// Base Case When Opening Source Directory
 	if ((dp = opendir(source_path)) == NULL) {
 		perror("opendir");
+		status = -1;
+		return status;
+	}
+
+	// Store Metadata of Directory in Stat Struct
+	if (stat(source_path, &dir_st) == -1) {
+		perror("directory stat");
+		status = -1;
+		return status;
+	}
+
+	// Create Copied Directory
+	if (mkdirat(AT_FDCWD, dest_path, dir_st.st_mode) == -1) {
+		perror("mkdir");
 		status = -1;
 		return status;
 	}
@@ -338,9 +361,10 @@ int copy_directory(char *source_path, char *dest_path, int args) {
 		if (strcmp(entry->d_name, ".") == 0 || strcmp(entry->d_name, "..") == 0) {
 			continue;
 		}
-		
+			
 		// Store Entry Data in Stat Struct
-		if (stat(entry->d_name, &st) == -1) {
+		struct stat source_st;
+		if (stat(entry->d_name, &source_st) == -1) {
 			status = -1;
 			break;
 		}
@@ -353,7 +377,7 @@ int copy_directory(char *source_path, char *dest_path, int args) {
 		}
 
 		// Copy any Files Within Entry if Its A Directory
-		if (file_type == S_ISDIR) {
+		if (file_type == S_IFDIR) {
 			// Create Path String For Directory Entry and Copy
 			char dirs_path[PATH_MAX];
 			int ret_dirs;
@@ -366,26 +390,27 @@ int copy_directory(char *source_path, char *dest_path, int args) {
 				status = -1;
 				fprintf(stderr, "snprintf error: Encoding error.\n");
 				break;
-			} else if (size_t(dirs_path) > sizeof(dirs_path)) {
+			} else if ((size_t)(dirs_path) > sizeof(dirs_path)) {
 				fprintf(stderr, "snprintf warning: Source file-path was too long, file name was truncated.\n");
 				printf("Truncated output: %s\n", dirs_path);
 				status = -1;
 				break;
 			}
 			
-			ret_dird = snprintf(dird_path, sizeof(dird_path), "%s%s%s", source_path, "/", entry->d_name);
+			ret_dird = snprintf(dird_path, sizeof(dird_path), "%s%s%s", dest_path, "/", entry->d_name);
 			if (ret_dird < 0) {
 				status = -1;
 				fprintf(stderr, "snprintf error: Encoding error.\n");
 				break;
-			} else if (size_t(dird_path) > sizeof(dird_path)) {
+			} else if ((size_t)(dird_path) > sizeof(dird_path)) {
 				fprintf(stderr, "snprintf warning: Source file-path was too long, file name was truncated.\n");
 				printf("Truncated output: %s\n", dird_path);
 				status = -1;
 				break;
 			}
+
 			// Recurse Through Directory Entry
-			copy_directory(dir_path, args);
+			copy_directory(dirs_path, dird_path, args);
 
 		} else {
 			// Create Path String For Source and Copied Files
@@ -401,7 +426,7 @@ int copy_directory(char *source_path, char *dest_path, int args) {
 				fprintf(stderr, "snprintf error: Encoding error.\n");
 				status = -1;
 				break;
-			} else if (size_t(ret_source) > sizeof(sd_path)) {
+			} else if ((size_t)(ret_source) > sizeof(sd_path)) {
 				fprintf(stderr, "snprintf warning: Source file-path was too long, file name was truncated.\n");
 				printf("Truncated output: %s\n", sd_path);
 				status = -1;
@@ -412,7 +437,8 @@ int copy_directory(char *source_path, char *dest_path, int args) {
 				fprintf(stderr, "snprintf error: Encoding error.\n");
 				status = -1;
 				break;
-			} else if (size_t(ret_dest) > sizeof(dd_path)) {
+
+			} else if ((size_t)(ret_dest) > sizeof(dd_path)) {
 				fprintf(stderr, "snprintf warning: Source file-path was too long, file name was truncated.\n");
 				printf("Truncated output: %s\n", dd_path);
 				status = -1;
@@ -421,9 +447,7 @@ int copy_directory(char *source_path, char *dest_path, int args) {
 			
 			// Open Source File
 			int source_fd;
-			struct stat source_st;
-
-			source_fd = open(file_path, O_RDONLY);
+			source_fd = open(sd_path, O_RDONLY);
 			if (acopy_file(source_fd, source_st, sd_path, dd_path, args) == -1) {
 				status = -1;
 				break;
@@ -431,7 +455,9 @@ int copy_directory(char *source_path, char *dest_path, int args) {
 		  }
 		}
 
+	// Close Directories
+	closedir(dp);
+
 	return status;
 }
-
 
