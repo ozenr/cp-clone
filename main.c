@@ -114,15 +114,7 @@ int main(int argc, char *argv[]) {
 	// Operations Based On Source File Type
 	// Regular File
 	if (file_type == S_IFREG) {
-		// Copy File Without Arguments
-		if (args == 0) {
-			if (copy_file(SOURCE_FD, st, argv[optind+1]) == -1) {
-				fprintf(stderr, "testing error message\n");
-				return 1;
-			}
-		}
-
-		// Copy File With Arguments
+		// Copy File
 		if (acopy_file(SOURCE_FD, st, argv[optind], argv[optind+1], args) == -1) {
 			fprintf(stderr, "testing errorr message\n");
 			return 1;
@@ -134,7 +126,6 @@ int main(int argc, char *argv[]) {
 		// Copy Directory Only if -r or -R flag is activated
 		if ((args & r_FLAG) == r_FLAG) {
 			if (copy_directory(argv[optind], argv[optind+1], args) == -1) {
-				fprintf(stderr, "copy_directory error\n");
 				return 1;
 			}
 		} else {
@@ -142,11 +133,6 @@ int main(int argc, char *argv[]) {
 			return 1;
 		}
 	} 
-	
-	// Linked File
-	else if (file_type == S_IFLNK) {
-		printf("Symbolic Link\n");
-	}
 
 	// Finish
 	close(SOURCE_FD);
@@ -260,7 +246,7 @@ int acopy_file(int fd, struct stat source_st, char *source_path, char *dest_path
 	int fd2;
 
 	// Create File If No Flags
-	if (args == 0) { 
+	if (args == 0 || (args & r_FLAG) == r_FLAG) { 
 		if (copy_file(fd, source_st, dest_path) == -1) {
 			fprintf(stderr, "testing error message\n");
 			status = -1;
@@ -362,47 +348,54 @@ int copy_directory(char *source_path, char *dest_path, int args) {
 			continue;
 		}
 			
-		// Store Entry Data in Stat Struct
+		/*// Store Entry Data in Stat Struct
 		struct stat source_st;
 		if (stat(entry->d_name, &source_st) == -1) {
 			status = -1;
 			break;
+		}*/
+
+		// Create Path String For Dirent
+		char dirs_path[PATH_MAX];
+		int ret_dirs;
+
+		ret_dirs = snprintf(dirs_path, sizeof(dirs_path), "%s%s%s", source_path, "/", entry->d_name);
+		if (ret_dirs < 0) {
+			status = -1;
+			fprintf(stderr, "snprintf error: Encoding error.\n");
+			break;
+		} else if ((size_t)(ret_dirs) > sizeof(dirs_path)) {
+			fprintf(stderr, "snprintf warning: Source file-path was too long, file name was truncated.\n");
+			printf("Truncated output: %s\n", dirs_path);
+			status = -1;
+			break;
 		}
 
+		// Store Entry Data in Stat Struct
+		struct stat source_st;
+		if (stat(dirs_path, &source_st) == -1) {
+			status = -1;
+			break;
+		}
 		// Check If Entry is a Directory
 		int file_type;
-		if ((file_type = get_file_type(entry->d_name)) == -1) {
+		if ((file_type = get_file_type(dirs_path)) == -1) {
 			status = -1;
 			break;
 		}
 
 		// Copy any Files Within Entry if Its A Directory
 		if (file_type == S_IFDIR) {
-			// Create Path String For Directory Entry and Copy
-			char dirs_path[PATH_MAX];
-			int ret_dirs;
-
+			// Create Path String for Copy
 			char dird_path[PATH_MAX];
 			int ret_dird;
-
-			ret_dirs = snprintf(dirs_path, sizeof(dirs_path), "%s%s%s", source_path, "/", entry->d_name);
-			if (ret_dirs < 0) {
-				status = -1;
-				fprintf(stderr, "snprintf error: Encoding error.\n");
-				break;
-			} else if ((size_t)(dirs_path) > sizeof(dirs_path)) {
-				fprintf(stderr, "snprintf warning: Source file-path was too long, file name was truncated.\n");
-				printf("Truncated output: %s\n", dirs_path);
-				status = -1;
-				break;
-			}
 			
 			ret_dird = snprintf(dird_path, sizeof(dird_path), "%s%s%s", dest_path, "/", entry->d_name);
 			if (ret_dird < 0) {
 				status = -1;
 				fprintf(stderr, "snprintf error: Encoding error.\n");
 				break;
-			} else if ((size_t)(dird_path) > sizeof(dird_path)) {
+			} else if ((size_t)(ret_dird) > sizeof(dird_path)) {
 				fprintf(stderr, "snprintf warning: Source file-path was too long, file name was truncated.\n");
 				printf("Truncated output: %s\n", dird_path);
 				status = -1;
