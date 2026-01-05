@@ -1,4 +1,5 @@
 #define _POSIX_C_SOURCE 200809L
+#define MAX_PATH 4096
 
 #include <stdio.h> 
 #include <stdlib.h>
@@ -17,7 +18,7 @@ int get_file_type(char *path);
 int acopy_file(int fd, struct stat source_st, char *source_path, char *dest_path, int args);
 int copy_file(int fd, struct stat source_st, char *path);
 char *get_file_content(int fd, struct stat st);
-int copy_directory(const char *path, int args);
+int copy_directory(char *source_path, char *dest_path, int args)
 
 // File Type Flags
 int REG_F, DIR_F, LNK_F;
@@ -154,6 +155,7 @@ int get_file_type(char *path) {
 	if (lstat(path, &st) == -1) {
 		perror("stat");
 		status = -1;
+		return status;
 	}
 	
 	// Set Flags Based on Filetype
@@ -314,7 +316,7 @@ int acopy_file(int fd, struct stat source_st, char *source_path, char *dest_path
 }
 
 // Function to Copy Directories
-int copy_directory(const char *path, int args) {
+int copy_directory(char *source_path, char *dest_path, int args) {
 	// Status Variable
 	int status = 0;
 
@@ -324,9 +326,10 @@ int copy_directory(const char *path, int args) {
 	struct stat st;
 
 	// Base Case When Opening Directory
-	if ((dp = opendir(path)) == NULL) {
+	if ((dp = opendir(source_path)) == NULL) {
 		perror("opendir");
-		return -1;
+		status = -1;
+		return status;
 	}
 
 	// Iterate Through Directory Entries
@@ -343,8 +346,92 @@ int copy_directory(const char *path, int args) {
 		}
 
 		// Check If Entry is a Directory
-		
-	}
+		int file_type;
+		if ((file_type = get_file_type(entry->d_name)) == -1) {
+			status = -1;
+			break;
+		}
+
+		// Copy any Files Within Entry if Its A Directory
+		if (file_type == S_ISDIR) {
+			// Create Path String For Directory Entry and Copy
+			char dirs_path[PATH_MAX];
+			int ret_dirs;
+
+			char dird_path[PATH_MAX];
+			int ret_dird;
+
+			ret_dirs = snprintf(dirs_path, sizeof(dirs_path), "%s%s%s", source_path, "/", entry->d_name);
+			if (ret_dirs < 0) {
+				status = -1;
+				fprintf(stderr, "snprintf error: Encoding error.\n");
+				break;
+			} else if (size_t(dirs_path) > sizeof(dirs_path)) {
+				fprintf(stderr, "snprintf warning: Source file-path was too long, file name was truncated.\n");
+				printf("Truncated output: %s\n", dirs_path);
+				status = -1;
+				break;
+			}
+			
+			ret_dird = snprintf(dird_path, sizeof(dird_path), "%s%s%s", source_path, "/", entry->d_name);
+			if (ret_dird < 0) {
+				status = -1;
+				fprintf(stderr, "snprintf error: Encoding error.\n");
+				break;
+			} else if (size_t(dird_path) > sizeof(dird_path)) {
+				fprintf(stderr, "snprintf warning: Source file-path was too long, file name was truncated.\n");
+				printf("Truncated output: %s\n", dird_path);
+				status = -1;
+				break;
+			}
+			// Recurse Through Directory Entry
+			copy_directory(dir_path, args);
+
+		} else {
+			// Create Path String For Source and Copied Files
+			char sd_path[PATH_MAX];
+			char dd_path[PATH_MAX];
+			int ret_source;
+			int ret_dest;
+			ret_source = snprintf(sd_path, sizeof(sd_path), "%s%s%s", source_path, "/", entry->d_name);
+			ret_dest = snprintf(dd_path, sizeof(dd_path), "%s%s%s", dest_path, "/", entry->d_name);
+
+			// Error Checking Concatenations
+			if (ret_source < 0) {
+				fprintf(stderr, "snprintf error: Encoding error.\n");
+				status = -1;
+				break;
+			} else if (size_t(ret_source) > sizeof(sd_path)) {
+				fprintf(stderr, "snprintf warning: Source file-path was too long, file name was truncated.\n");
+				printf("Truncated output: %s\n", sd_path);
+				status = -1;
+				break;
+			}
+
+			if (ret_dest < 0) {
+				fprintf(stderr, "snprintf error: Encoding error.\n");
+				status = -1;
+				break;
+			} else if (size_t(ret_dest) > sizeof(dd_path)) {
+				fprintf(stderr, "snprintf warning: Source file-path was too long, file name was truncated.\n");
+				printf("Truncated output: %s\n", dd_path);
+				status = -1;
+				break;
+			}
+			
+			// Open Source File
+			int source_fd;
+			struct stat source_st;
+
+			source_fd = open(file_path, O_RDONLY);
+			if (acopy_file(source_fd, source_st, sd_path, dd_path, args) == -1) {
+				status = -1;
+				break;
+			}
+		  }
+		}
 
 	return status;
 }
+
+
